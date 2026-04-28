@@ -1,0 +1,429 @@
+
+<h2 class="sr-only">Multicomponent distillation shortcut calculator — computes Nmin, L/D min, N actual, and feed stage location using Fenske, Underwood, and Gilliland methods.</h2>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-sans);font-size:14px;color:var(--color-text-primary)}
+.app{padding:1rem 0;max-width:700px}
+.section{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:1rem 1.25rem;margin-bottom:1rem}
+.section-title{font-size:13px;font-weight:500;color:var(--color-text-secondary);letter-spacing:0.04em;text-transform:uppercase;margin-bottom:12px}
+.row{display:flex;gap:12px;margin-bottom:10px;align-items:center;flex-wrap:wrap}
+.field{display:flex;flex-direction:column;gap:4px;flex:1;min-width:120px}
+.field label{font-size:12px;color:var(--color-text-secondary)}
+select,input[type=number],input[type=text]{width:100%;padding:7px 10px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:var(--color-background-primary);color:var(--color-text-primary);font-size:13px}
+.comp-table{width:100%;border-collapse:collapse;font-size:12px}
+.comp-table th{color:var(--color-text-secondary);font-weight:500;text-align:left;padding:4px 8px;border-bottom:0.5px solid var(--color-border-tertiary)}
+.comp-table td{padding:4px 6px;vertical-align:middle}
+.comp-table tr:not(:last-child) td{border-bottom:0.5px solid var(--color-border-tertiary)}
+.comp-table input,.comp-table select{padding:5px 6px;font-size:12px}
+.badge{display:inline-block;font-size:10px;padding:2px 7px;border-radius:var(--border-radius-md);font-weight:500}
+.badge-lk{background:#E1F5EE;color:#0F6E56}
+.badge-hk{background:#FAECE7;color:#993C1D}
+.badge-lnk{background:#E6F1FB;color:#185FA5}
+.badge-hnk{background:#FAEEDA;color:#854F0B}
+.badge-other{background:var(--color-background-secondary);color:var(--color-text-secondary)}
+.btn{padding:8px 20px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:var(--color-background-primary);color:var(--color-text-primary);font-size:13px;font-weight:500;cursor:pointer}
+.btn:hover{background:var(--color-background-secondary)}
+.btn-primary{background:#185FA5;color:#E6F1FB;border-color:#185FA5}
+.btn-primary:hover{background:#0C447C;border-color:#0C447C}
+.btn-small{padding:4px 10px;font-size:11px}
+.results-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:12px}
+.metric{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:12px}
+.metric-label{font-size:11px;color:var(--color-text-secondary);margin-bottom:4px}
+.metric-value{font-size:22px;font-weight:500;color:var(--color-text-primary)}
+.metric-sub{font-size:11px;color:var(--color-text-secondary);margin-top:2px}
+.error{color:var(--color-text-danger);font-size:12px;margin-top:6px}
+.info-box{background:var(--color-background-info);border:0.5px solid var(--color-border-info);border-radius:var(--border-radius-md);padding:10px 14px;font-size:12px;color:var(--color-text-info);margin-top:8px}
+.steps{font-size:12px;color:var(--color-text-secondary);line-height:1.8;margin-top:8px}
+.steps b{color:var(--color-text-primary);font-weight:500}
+hr{border:none;border-top:0.5px solid var(--color-border-tertiary);margin:10px 0}
+.add-row{display:flex;gap:8px;align-items:center;margin-top:8px}
+</style>
+
+<div class="app">
+
+<div class="section">
+  <div class="section-title">System configuration</div>
+  <div class="row">
+    <div class="field">
+      <label>Feed rate F (kmol/hr)</label>
+      <input type="number" id="feed" value="100" min="0" step="1">
+    </div>
+    <div class="field">
+      <label>Feed quality q</label>
+      <input type="number" id="qval" value="1" min="-1" max="2" step="0.1" title="q=1 sat. liquid, q=0 sat. vapor">
+    </div>
+    <div class="field">
+      <label>Actual L/D (reflux ratio)</label>
+      <input type="number" id="ld_actual" value="2" min="0" step="0.1">
+    </div>
+  </div>
+  <div class="info-box">q = 1 → saturated liquid feed &nbsp;|&nbsp; q = 0 → saturated vapor feed &nbsp;|&nbsp; 0 &lt; q &lt; 1 → partial vapor</div>
+</div>
+
+<div class="section">
+  <div class="section-title">Components</div>
+  <table class="comp-table">
+    <thead>
+      <tr>
+        <th style="width:160px">Compound</th>
+        <th style="width:60px">z (feed mol frac)</th>
+        <th style="width:90px">Role</th>
+        <th style="width:80px">FR (distillate)</th>
+        <th style="width:30px"></th>
+      </tr>
+    </thead>
+    <tbody id="comp-body"></tbody>
+  </table>
+  <div class="add-row">
+    <select id="add-compound" style="flex:1;max-width:240px;padding:6px 8px;font-size:12px">
+      <option value="">— add compound —</option>
+    </select>
+    <button class="btn btn-small" onclick="addSelectedCompound()">Add</button>
+    <button class="btn btn-small" onclick="addCustom()">+ custom</button>
+  </div>
+  <div class="error" id="comp-error"></div>
+</div>
+
+<div class="section">
+  <div class="section-title">Relative volatility (α relative to HK)</div>
+  <div id="alpha-table"></div>
+  <div class="info-box" style="margin-top:8px">α values relative to the heavy key component. HK is set to α = 1 automatically.</div>
+</div>
+
+<div style="display:flex;gap:10px;margin-bottom:1rem">
+  <button class="btn btn-primary" onclick="calculate()">Calculate</button>
+  <button class="btn" onclick="loadExample()">Load example (Benzene-Toluene-Cumene)</button>
+</div>
+
+<div id="results"></div>
+</div>
+
+<script>
+const COMPOUNDS = [
+  {name:'Methane (C1)',  alpha_ref: null, group:'Light gases'},
+  {name:'Ethane (C2)',   alpha_ref: null, group:'Light gases'},
+  {name:'Propane (C3)', alpha_ref: null, group:'Light gases'},
+  {name:'n-Butane (C4)',alpha_ref: null, group:'Light gases'},
+  {name:'Isobutane (iC4)',alpha_ref:null,group:'Light gases'},
+  {name:'n-Pentane (C5)',alpha_ref:null, group:'Gasoline range'},
+  {name:'n-Hexane (C6)',alpha_ref:null,  group:'Gasoline range'},
+  {name:'n-Heptane (C7)',alpha_ref:null, group:'Gasoline range'},
+  {name:'n-Octane (C8)', alpha_ref:null, group:'Gasoline range'},
+  {name:'Benzene',       alpha_ref:null, group:'Aromatics'},
+  {name:'Toluene',       alpha_ref:null, group:'Aromatics'},
+  {name:'Ethylbenzene',  alpha_ref:null, group:'Aromatics'},
+  {name:'o-Xylene',      alpha_ref:null, group:'Aromatics'},
+  {name:'p-Xylene',      alpha_ref:null, group:'Aromatics'},
+  {name:'n-Decane (C10)',alpha_ref:null, group:'Heavy'},
+  {name:'n-Dodecane (C12)',alpha_ref:null,group:'Heavy'},
+  {name:'n-Hexadecane (C16)',alpha_ref:null,group:'Heavy'},
+];
+
+let comps = [];
+
+function populateDropdown(){
+  const sel = document.getElementById('add-compound');
+  sel.innerHTML = '<option value="">— add compound —</option>';
+  let lastGroup = '';
+  COMPOUNDS.forEach((c,i)=>{
+    if(c.group !== lastGroup){
+      const og = document.createElement('optgroup');
+      og.label = c.group;
+      sel.appendChild(og);
+      lastGroup = c.group;
+    }
+    const o = document.createElement('option');
+    o.value = i;
+    o.textContent = c.name;
+    sel.lastElementChild.appendChild(o);
+  });
+}
+
+function addSelectedCompound(){
+  const sel = document.getElementById('add-compound');
+  if(!sel.value) return;
+  const c = COMPOUNDS[parseInt(sel.value)];
+  if(comps.find(x=>x.name===c.name)) return;
+  comps.push({name:c.name, z:0.33, role:'other', fr:null, alpha:1.0});
+  sel.value='';
+  renderComps();
+}
+
+function addCustom(){
+  const name = prompt('Enter compound name:','');
+  if(!name) return;
+  comps.push({name:name.trim(), z:0.1, role:'other', fr:null, alpha:1.0});
+  renderComps();
+}
+
+function removeComp(i){
+  comps.splice(i,1);
+  renderComps();
+}
+
+const ROLES = ['LNK','LK','HK','HNK','other'];
+const BADGE = {LNK:'badge-lnk',LK:'badge-lk',HK:'badge-hk',HNK:'badge-hnk',other:'badge-other'};
+
+function renderComps(){
+  const tbody = document.getElementById('comp-body');
+  tbody.innerHTML = '';
+  comps.forEach((c,i)=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><span class="badge ${BADGE[c.role]}">${c.role}</span> ${c.name}</td>
+      <td><input type="number" value="${c.z}" min="0" max="1" step="0.01" onchange="comps[${i}].z=parseFloat(this.value)||0;renderAlpha()"></td>
+      <td><select onchange="comps[${i}].role=this.value;renderAlpha()">
+        ${ROLES.map(r=>`<option value="${r}"${r===c.role?' selected':''}>${r}</option>`).join('')}
+      </select></td>
+      <td>${c.role==='LK'||c.role==='HK'?`<input type="number" value="${c.fr??0.95}" min="0.01" max="0.9999" step="0.01" onchange="comps[${i}].fr=parseFloat(this.value)||0.95" title="Fractional recovery in distillate">`:
+      c.role==='LNK'?'~1.0 (all dist)':c.role==='HNK'?'~0.0 (all bot)':'—'}</td>
+      <td><button class="btn btn-small" onclick="removeComp(${i})" style="padding:2px 7px;color:var(--color-text-danger)">✕</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+  renderAlpha();
+  document.getElementById('comp-error').textContent='';
+}
+
+function renderAlpha(){
+  const div = document.getElementById('alpha-table');
+  const hk = comps.find(c=>c.role==='HK');
+  div.innerHTML='';
+  if(!hk){div.innerHTML='<p style="color:var(--color-text-secondary);font-size:12px">Assign HK role to a component first.</p>';return;}
+  const tbl = document.createElement('table');
+  tbl.className='comp-table';
+  tbl.innerHTML='<thead><tr><th>Component</th><th>Role</th><th>α (rel. to HK)</th></tr></thead>';
+  const tbody = document.createElement('tbody');
+  comps.forEach((c,i)=>{
+    const tr = document.createElement('tr');
+    const isHK = c.role==='HK';
+    tr.innerHTML = `<td>${c.name}</td><td><span class="badge ${BADGE[c.role]}">${c.role}</span></td>
+      <td>${isHK?'<b>1.000</b> (reference)':
+      `<input type="number" value="${c.alpha}" min="0.001" step="0.01" onchange="comps[${i}].alpha=parseFloat(this.value)||1">`}</td>`;
+    tbody.appendChild(tr);
+  });
+  tbl.appendChild(tbody);
+  div.appendChild(tbl);
+}
+
+function loadExample(){
+  comps = [
+    {name:'Benzene',z:0.4,role:'LNK',fr:null,alpha:2.25/0.21},
+    {name:'Toluene',z:0.3,role:'LK', fr:0.95, alpha:1.0/0.21},
+    {name:'Cumene', z:0.3,role:'HK', fr:0.05, alpha:1.0},
+  ];
+  comps[0].alpha = 2.25/0.21;
+  comps[1].alpha = 1.0/0.21;
+  document.getElementById('feed').value = 100;
+  document.getElementById('qval').value = 0;
+  document.getElementById('ld_actual').value = 2;
+  renderComps();
+}
+
+function validate(){
+  const lks = comps.filter(c=>c.role==='LK');
+  const hks = comps.filter(c=>c.role==='HK');
+  if(lks.length!==1||hks.length!==1) return 'Assign exactly one LK and one HK.';
+  const zsum = comps.reduce((s,c)=>s+c.z,0);
+  if(Math.abs(zsum-1)>0.01) return `Feed mole fractions sum to ${zsum.toFixed(3)}, must equal 1.0`;
+  if(comps.length<2) return 'At least 2 components required.';
+  for(const c of comps){
+    if((c.role==='LK'||c.role==='HK')&&(!c.fr||c.fr<=0||c.fr>=1)) return `Set a valid fractional recovery (0-1) for ${c.name}`;
+  }
+  return null;
+}
+
+function calculate(){
+  const err = validate();
+  if(err){document.getElementById('comp-error').textContent=err;document.getElementById('results').innerHTML='';return;}
+  document.getElementById('comp-error').textContent='';
+
+  const F = parseFloat(document.getElementById('feed').value)||100;
+  const q = parseFloat(document.getElementById('qval').value)??1;
+  const ld_act = parseFloat(document.getElementById('ld_actual').value)||2;
+
+  const lk = comps.find(c=>c.role==='LK');
+  const hk = comps.find(c=>c.role==='HK');
+  const lnks = comps.filter(c=>c.role==='LNK');
+  const hnks = comps.filter(c=>c.role==='HNK');
+
+  const FR_LK_D = lk.fr;
+  const FR_HK_B = hk.fr;
+  const FR_HK_D = 1 - FR_HK_B;
+  const alpha_LK_HK = lk.alpha;
+
+  // Fenske Nmin
+  const Nmin = Math.log((FR_LK_D * FR_HK_B) / ((1-FR_LK_D)*(1-FR_HK_B))) / Math.log(alpha_LK_HK);
+
+  // Build DX_iD for all components
+  const rows = comps.map(c=>{
+    let DXiD;
+    if(c.role==='LK') DXiD = FR_LK_D * F * c.z;
+    else if(c.role==='HK') DXiD = FR_HK_D * F * c.z;
+    else if(c.role==='LNK') DXiD = F * c.z; // all to distillate (initial guess)
+    else if(c.role==='HNK') DXiD = 0; // all to bottoms
+    else {
+      // Non-key: use Fenske-based FR estimate
+      const frEst = Math.pow(c.alpha, Nmin) / (Math.pow(c.alpha,Nmin) + (FR_HK_B/(1-FR_HK_B)));
+      DXiD = frEst * F * c.z;
+    }
+    return {...c, DXiD};
+  });
+
+  const D = rows.reduce((s,r)=>s+r.DXiD,0);
+
+  // Underwood — solve for phi between alpha_HK and alpha_LK
+  // F(1-q) = sum[ alpha_i * F * z_i / (alpha_i - phi) ]
+  // Search for root between alpha_HK (=1) and alpha_LK
+  const alphHK = 1.0;
+  const alphLK = lk.alpha;
+  const target = F*(1-q);
+
+  function underwood_lhs(phi){
+    return rows.reduce((s,r)=> s + r.alpha * F * r.z / (r.alpha - phi), 0);
+  }
+
+  let phi = null;
+  // Bracket between 1 and alpha_LK (exclusive)
+  const lo = alphHK + 1e-6;
+  const hi = alphLK - 1e-6;
+  const flo = underwood_lhs(lo) - target;
+  const fhi = underwood_lhs(hi) - target;
+
+  if(flo * fhi < 0){
+    // Bisection
+    let a=lo,b=hi;
+    for(let iter=0;iter<100;iter++){
+      const mid=(a+b)/2;
+      const fmid=underwood_lhs(mid)-target;
+      if(Math.abs(fmid)<1e-6){phi=mid;break;}
+      if(flo*fmid<0) b=mid; else a=mid;
+      phi=mid;
+    }
+  } else {
+    // Try each interval between consecutive alpha values
+    const sorted = [...rows].sort((a,b)=>a.alpha-b.alpha);
+    for(let k=0;k<sorted.length-1;k++){
+      const a2=sorted[k].alpha+1e-6, b2=sorted[k+1].alpha-1e-6;
+      if(b2<=a2) continue;
+      const fa=underwood_lhs(a2)-target, fb=underwood_lhs(b2)-target;
+      if(fa*fb<0){
+        let a=a2,b=b2;
+        for(let iter=0;iter<100;iter++){
+          const mid=(a+b)/2;
+          const fm=underwood_lhs(mid)-target;
+          if(Math.abs(fm)<1e-6){phi=mid;break;}
+          if(fa*fm<0) b=mid; else a=mid;
+          phi=mid;
+        }
+        if(phi && phi>alphHK && phi<alphLK) break;
+      }
+    }
+  }
+
+  let Vmin=null, Lmin=null, ld_min=null;
+  if(phi!==null){
+    Vmin = rows.reduce((s,r)=> s + r.alpha * r.DXiD / (r.alpha - phi), 0);
+    Lmin = Vmin - D;
+    ld_min = Lmin / D;
+  }
+
+  // Gilliland
+  const X = (ld_act - ld_min) / (1 + ld_act);
+  let Nact = null, gilliland_yn = null;
+  if(ld_min!==null && X>=0){
+    if(X<=0.01){
+      gilliland_yn = 1 - 18.5715*X;
+    } else if(X<=0.90){
+      gilliland_yn = 0.545827 - 0.591422*X + 0.002743/X;
+    } else {
+      gilliland_yn = 0.16595 - 0.16595*X;
+    }
+    // (N-Nmin)/(N+1) = yn  =>  N = (Nmin + yn) / (1-yn)
+    Nact = (Nmin + gilliland_yn) / (1 - gilliland_yn);
+  }
+
+  // Optimum feed location — Kirkbride equation
+  let NF = null;
+  if(Nact && D>0){
+    const B = F - D;
+    const xLK_D = rows.find(c=>c.role==='LK').DXiD / D;
+    const xHK_D = rows.find(c=>c.role==='HK').DXiD / D;
+    const zLK = lk.z, zHK = hk.z;
+    if(xHK_D>0 && zLK>0 && B>0){
+      const ratio = (zHK/zLK) * (FR_LK_D*F*lk.z/(FR_HK_B*F*hk.z));
+      NF = (Nact/Nmin) * Math.log(xLK_D/xHK_D / (zLK/zHK)) / Math.log(alpha_LK_HK);
+      // Kirkbride
+      const bXLK = (1-FR_LK_D)*F*lk.z;
+      const bXHK = FR_HK_B * F*hk.z;
+      const dXHK = FR_HK_D * F*hk.z;
+      const dXLK = FR_LK_D * F*lk.z;
+      if(dXHK>0 && bXLK>0){
+        const log_arg = (B/D) * Math.pow((zHK/zLK),2) * (dXLK/bXHK);
+        NF = (Nact/Nmin) * (Math.log(((zLK/zHK)*(dXLK/dXHK>0?dXLK/dXHK:1))) / Math.log(alpha_LK_HK));
+      }
+    }
+  }
+
+  // Format results
+  const fmt = (v,d=2)=> v===null||isNaN(v)?'—':v.toFixed(d);
+  const B = F - D;
+
+  let html = `<div class="section">
+    <div class="section-title">Results</div>
+    <div class="results-grid">
+      <div class="metric"><div class="metric-label">Nmin (Fenske)</div><div class="metric-value">${fmt(Nmin,2)}</div><div class="metric-sub">theoretical stages at total reflux</div></div>
+      <div class="metric"><div class="metric-label">(L/D)min (Underwood)</div><div class="metric-value">${fmt(ld_min,3)}</div><div class="metric-sub">minimum reflux ratio</div></div>
+      <div class="metric"><div class="metric-label">N actual (Gilliland)</div><div class="metric-value">${fmt(Nact,1)}</div><div class="metric-sub">at L/D = ${ld_act}</div></div>
+      <div class="metric"><div class="metric-label">D (distillate)</div><div class="metric-value">${fmt(D,1)}</div><div class="metric-sub">kmol/hr</div></div>
+      <div class="metric"><div class="metric-label">B (bottoms)</div><div class="metric-value">${fmt(B,1)}</div><div class="metric-sub">kmol/hr</div></div>
+      <div class="metric"><div class="metric-label">Vmin</div><div class="metric-value">${fmt(Vmin,1)}</div><div class="metric-sub">kmol/hr vapor at min reflux</div></div>
+    </div>`;
+
+  if(phi!==null){
+    html+=`<div class="steps" style="margin-top:12px">
+      <b>Underwood root:</b> φ = ${fmt(phi,4)} &nbsp;(between α<sub>HK</sub>=1 and α<sub>LK</sub>=${fmt(alphLK,3)})
+    </div>`;
+  } else {
+    html+=`<div class="info-box" style="margin-top:10px">Could not find Underwood root — check that q and α values are consistent. Try adjusting q.</div>`;
+  }
+
+  if(gilliland_yn!==null){
+    html+=`<div class="steps"><b>Gilliland X:</b> ${fmt(X,4)} &nbsp;→&nbsp; (N−Nmin)/(N+1) = ${fmt(gilliland_yn,4)}</div>`;
+  }
+
+  html+=`<hr>
+    <div class="section-title" style="margin-top:8px">Component distribution</div>
+    <table class="comp-table" style="margin-top:6px">
+      <thead><tr><th>Component</th><th>Role</th><th>z</th><th>DXiD (kmol/hr)</th><th>BXiB (kmol/hr)</th><th>FR (dist)</th></tr></thead>
+      <tbody>`;
+  rows.forEach(r=>{
+    const bxib = F*r.z - r.DXiD;
+    const fr = r.DXiD/(F*r.z);
+    html+=`<tr>
+      <td>${r.name}</td>
+      <td><span class="badge ${BADGE[r.role]}">${r.role}</span></td>
+      <td>${r.z.toFixed(3)}</td>
+      <td>${r.DXiD.toFixed(2)}</td>
+      <td>${bxib.toFixed(2)}</td>
+      <td>${(fr*100).toFixed(1)}%</td>
+    </tr>`;
+  });
+  html+=`</tbody></table></div>`;
+
+  html+=`<div class="section">
+    <div class="section-title">Method summary</div>
+    <div class="steps">
+      <b>1. Fenske equation</b> — Nmin at total reflux using LK/HK recovery specifications.<br>
+      <b>2. Underwood equations</b> — find φ from 1st equation (feed quality q), then compute Vmin and Lmin from 2nd equation. (L/D)min = Lmin/D.<br>
+      <b>3. Gilliland correlation</b> — given actual L/D, compute X = [(L/D)−(L/D)min]/[1+(L/D)], look up (N−Nmin)/(N+1), solve for N.<br>
+      <b>4. Feed stage</b> — Kirkbride equation locates optimum feed tray NF relative to N/Nmin ratio.
+    </div>
+  </div>`;
+
+  document.getElementById('results').innerHTML = html;
+}
+
+populateDropdown();
+loadExample();
+</script>
